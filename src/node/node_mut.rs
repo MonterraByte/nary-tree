@@ -983,6 +983,96 @@ impl<'a, T> NodeMut<'a, T> {
         }
     }
 
+    /// Sorts the children of this node recursively.
+    ///
+    /// This function calls [`sort_children`](Self::sort_children), see its documentation for details.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(0).build();
+    /// let (node2, node3, node1) = {
+    ///     let mut root = tree.root_mut().unwrap();
+    ///     (
+    ///         root.append(2).node_id(),
+    ///         root.append(3).node_id(),
+    ///         root.append(1).node_id(),
+    ///     )
+    /// };
+    ///
+    /// let (node5, node4) = {
+    ///     let mut node1 = tree.get_mut(node1).unwrap();
+    ///     (node1.append(5).node_id(), node1.append(4).node_id())
+    /// };
+    ///
+    /// tree.get_mut(node4).unwrap().append(6);
+    /// tree.get_mut(node5).unwrap().append(8);
+    /// tree.get_mut(node5).unwrap().append(7);
+    ///
+    /// let node9 = {
+    ///     let mut node2 = tree.get_mut(node2).unwrap();
+    ///     let mut node9 = node2.append(9);
+    ///     node9.append(12);
+    ///     node9.append(10);
+    ///     node9.append(11);
+    ///     node9.node_id()
+    /// };
+    /// tree.get_mut(node3).unwrap().append(13);
+    ///
+    /// tree.root_mut().unwrap().sort_recursive();
+    ///
+    /// let children = |id| tree.get(id).unwrap().children().map(|c| *c.data()).collect::<Vec<_>>();
+    /// assert_eq!(children(tree.root_id().unwrap()), [1, 2, 3]);
+    /// assert_eq!(children(node1), [4, 5]);
+    /// assert_eq!(children(node4), [6]);
+    /// assert_eq!(children(node5), [7, 8]);
+    /// assert_eq!(children(node2), [9]);
+    /// assert_eq!(children(node9), [10, 11, 12]);
+    /// assert_eq!(children(node3), [13]);
+    /// ```
+    pub fn sort_recursive(&mut self)
+    where
+        T: Ord,
+    {
+        self.sort_recursive_by(&T::cmp);
+    }
+
+    /// Sorts the children of this node recursively using the specified comparison function.
+    ///
+    /// This function calls [`sort_children_by`](Self::sort_children_by), see its documentation for details.
+    pub fn sort_recursive_by<F>(&mut self, mut compare: F)
+    where
+        F: FnMut(&T, &T) -> Ordering,
+    {
+        self.sort_children_by(&mut compare);
+
+        let Some(first_child) = self.get_self_as_node().relatives.first_child else {
+            return;
+        };
+        let mut children = vec![first_child];
+
+        while let Some(current) = children.pop() {
+            if let Some(mut current_ref) = self.tree.get_mut(current) {
+                current_ref.sort_children_by(&mut compare);
+            } else {
+                unreachable!()
+            }
+
+            if let Some(current_node) = self.tree.get_node(current) {
+                if let Some(next_sibling) = current_node.relatives.next_sibling {
+                    children.push(next_sibling);
+                }
+                if let Some(first_child) = current_node.relatives.first_child {
+                    children.push(first_child);
+                }
+            } else {
+                unreachable!()
+            }
+        }
+    }
+
     fn get_self_as_node(&self) -> &Node<T> {
         if let Some(node) = self.tree.get_node(self.node_id) {
             node
