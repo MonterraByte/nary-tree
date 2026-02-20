@@ -1,7 +1,8 @@
-use crate::NodeId;
+use std::cmp::Ordering;
+use std::num::Saturating;
+
 use crate::behaviors::RemoveBehavior;
-use crate::node::Node;
-use crate::node::NodeRef;
+use crate::node::{Node, NodeId, NodeRef, Relatives};
 use crate::tree::Tree;
 
 ///
@@ -834,11 +835,228 @@ impl<'a, T> NodeMut<'a, T> {
         }
     }
 
+    /// Sorts the direct children of this node.
+    ///
+    /// # Current implementation
+    ///
+    /// The current implementation uses an adaptation of merge sort for linked lists
+    /// by Simon Tatham, described [here](https://www.chiark.greenend.org.uk/~sgtatham/algorithms/listsort.html).
+    ///
+    /// This sort is stable, and it runs in *n* log(*n*) time.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(0).build();
+    /// let mut root = tree.root_mut().expect("has root node");
+    /// for n in [2, 0, 4, 5, 1, 2] {
+    ///     root.append(n);
+    /// }
+    ///
+    /// root.sort_children();
+    ///
+    /// assert_eq!(
+    ///     root.as_ref().children().map(|c| *c.data()).collect::<Vec<_>>(),
+    ///     [0, 1, 2, 2, 4, 5],
+    /// );
+    /// ```
+    pub fn sort_children(&mut self)
+    where
+        T: Ord,
+    {
+        self.sort_children_by(&T::cmp);
+    }
+
+    /// Sorts the direct children of this node using the specified comparison function.
+    ///
+    /// See [`sort_children`](Self::sort_children) for more details.
+    pub fn sort_children_by<F>(&mut self, mut compare: F)
+    where
+        F: FnMut(&T, &T) -> Ordering,
+    {
+        let first_child = {
+            let node = self.get_self_as_node();
+            let Relatives {
+                first_child: Some(first_child),
+                last_child: Some(last_child),
+                ..
+            } = node.relatives
+            else {
+                // no children, already sorted
+                return;
+            };
+            if first_child == last_child {
+                // one child, already sorted
+                return;
+            }
+            first_child
+        };
+
+        // References:
+        // https://www.chiark.greenend.org.uk/~sgtatham/algorithms/listsort.html
+        // https://www.chiark.greenend.org.uk/~sgtatham/algorithms/listsort.c
+
+        // The size of the blocks to merge.
+        // In the first iteration, it is set to 1, so "blocks" of size 1 are merged into blocks of size 2.
+        // In the second iteration, it is set to 2, so blocks of size 2 are merged into blocks of size 4, and so on.
+        let mut k = 1;
+
+        // The head and tail of the linked list containing this node's children.
+        // It is rebuilt on each iteration of the outer loop.
+        let mut head = first_child;
+        let mut tail;
+        loop {
+            let mut merges = Saturating(0u8);
+            let mut p = SiblingList::new(head);
+            tail = None;
+
+            while !p.reached_end() {
+                merges += 1;
+
+                // Select the next two blocks of nodes to merge.
+                let mut q = p.pair_from_current_position(self.tree, k);
+
+                loop {
+                    // Take the next node to merge into the list from either p or q.
+                    let e = match (p.head(), q.head()) {
+                        (None, None) => break,
+                        (Some(p_head), None) => {
+                            // q is empty, take from p.
+                            p.advance(self.tree);
+                            p_head
+                        }
+                        (None, Some(q_head)) => {
+                            // p is empty, take from q.
+                            q.advance(self.tree);
+                            q_head
+                        }
+                        (Some(p_head), Some(q_head)) => {
+                            let p_data = &self.tree.get_node(p_head).expect("node exists").data;
+                            let q_data = &self.tree.get_node(q_head).expect("node exists").data;
+
+                            // Pick the smallest element to remove.
+                            // If both are equal, remove from p, to ensure the sort is stable.
+                            if compare(p_data, q_data) == Ordering::Greater {
+                                q.advance(self.tree);
+                                q_head
+                            } else {
+                                p.advance(self.tree);
+                                p_head
+                            }
+                        }
+                    };
+
+                    // Append it to the tail of the list.
+                    if let Some(tail) = tail {
+                        self.tree.set_next_sibling(tail, Some(e));
+                    } else {
+                        // This is the first node, so make it the head of the list as well.
+                        head = e;
+                    }
+                    self.tree.set_prev_sibling(e, tail);
+                    tail = Some(e);
+                }
+
+                // Advance p to where q ended, so that the next loop sorts the next set of nodes.
+                p.advance_to(&q);
+            }
+            if let Some(tail) = tail {
+                self.tree.set_next_sibling(tail, None);
+            }
+
+            if merges.0 <= 1 {
+                // Stop once all items have been merged into a single sorted block.
+                break;
+            }
+
+            k *= 2;
+        }
+        assert!(tail.is_some());
+
+        if let Some(node) = self.tree.get_node_mut(self.node_id) {
+            node.relatives.first_child = Some(head);
+            node.relatives.last_child = tail;
+        } else {
+            unreachable!()
+        }
+    }
+
     fn get_self_as_node(&self) -> &Node<T> {
         if let Some(node) = self.tree.get_node(self.node_id) {
             node
         } else {
             unreachable!()
+        }
+    }
+}
+
+/// List of sibling nodes for use as a merge sort block, see [`NodeMut::sort_children_by`].
+#[derive(Copy, Clone, Default)]
+struct SiblingList {
+    head: Option<NodeId>,
+    size: usize,
+}
+
+impl SiblingList {
+    /// Creates a new `SiblingList` at the specified position.
+    ///
+    /// `pair_from_current_position` should be called at least once before the list is used.
+    fn new(head: NodeId) -> Self {
+        Self {
+            head: Some(head),
+            size: 0,
+        }
+    }
+
+    /// Creates two blocks starting from the current position.
+    ///
+    /// This list's size will be set to `k` unless we reach the end of the entire sibling list,
+    /// in which case it will be less than `k`.
+    ///
+    /// The second list, the value returned by this method, will always have its size set to `k`,
+    /// but may contain fewer than `k` items (or none at all).
+    /// (There is no advantage in looking up the number of items ahead of time.)
+    fn pair_from_current_position<T>(&mut self, tree: &Tree<T>, k: usize) -> Self {
+        self.size = 0;
+        let mut second_head = self.head.expect("hasn't reached end");
+        for _ in 0..k {
+            self.size += 1;
+            match tree.get_node_next_sibling_id(second_head) {
+                Some(next) => second_head = next,
+                None => return Self::default(),
+            }
+        }
+
+        Self {
+            head: Some(second_head),
+            size: k,
+        }
+    }
+
+    /// Advances the list to the specified position.
+    ///
+    /// `pair_from_current_position` should be called after calling this.
+    fn advance_to(&mut self, other: &SiblingList) {
+        self.head = other.head;
+    }
+
+    /// Returns the node at the head of the list, if any.
+    fn head(&self) -> Option<NodeId> {
+        if self.size == 0 { None } else { self.head }
+    }
+
+    /// Checks if the list has reached the end of the entire sibling list.
+    fn reached_end(&self) -> bool {
+        self.head.is_none()
+    }
+
+    /// Advances the list to point to the next sibling.
+    fn advance<T>(&mut self, tree: &Tree<T>) {
+        if let Some(head) = self.head {
+            self.head = tree.get_node_next_sibling_id(head);
+            self.size -= 1;
         }
     }
 }
@@ -1626,5 +1844,154 @@ mod node_mut_tests {
         let result = root_mut.prepend_orphaned(child_id);
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn sort() {
+        let mut tree = Tree::new();
+        tree.set_root(0);
+        let root_id = tree.root_id().expect("root doesn't exist?");
+
+        let mut root_mut = tree.get_mut(root_id).unwrap();
+        let new_id = root_mut.append(7).node_id();
+        let new_id_2 = root_mut.append(3).node_id();
+        let new_id_3 = root_mut.append(4).node_id();
+        let new_id_4 = root_mut.append(1).node_id();
+        let new_id_5 = root_mut.append(4).node_id();
+
+        root_mut.sort_children();
+
+        let root_node = tree.get_node(root_id);
+        assert!(root_node.is_some());
+
+        let root_node = root_node.unwrap();
+        assert_eq!(root_node.relatives.first_child, Some(new_id_4));
+        assert_eq!(root_node.relatives.last_child, Some(new_id));
+
+        let new_node = tree.get_node(new_id);
+        assert!(new_node.is_some());
+
+        let new_node = new_node.unwrap();
+        assert_eq!(new_node.data, 7);
+        assert_eq!(new_node.relatives.parent, Some(root_id));
+        assert_eq!(new_node.relatives.prev_sibling, Some(new_id_5));
+        assert_eq!(new_node.relatives.next_sibling, None);
+        assert_eq!(new_node.relatives.first_child, None);
+        assert_eq!(new_node.relatives.last_child, None);
+
+        let new_node_2 = tree.get_node(new_id_2);
+        assert!(new_node_2.is_some());
+
+        let new_node_2 = new_node_2.unwrap();
+        assert_eq!(new_node_2.data, 3);
+        assert_eq!(new_node_2.relatives.parent, Some(root_id));
+        assert_eq!(new_node_2.relatives.prev_sibling, Some(new_id_4));
+        assert_eq!(new_node_2.relatives.next_sibling, Some(new_id_3));
+        assert_eq!(new_node_2.relatives.first_child, None);
+        assert_eq!(new_node_2.relatives.last_child, None);
+
+        let new_node_3 = tree.get_node(new_id_3);
+        assert!(new_node_3.is_some());
+
+        let new_node_3 = new_node_3.unwrap();
+        assert_eq!(new_node_3.data, 4);
+        assert_eq!(new_node_3.relatives.parent, Some(root_id));
+        assert_eq!(new_node_3.relatives.prev_sibling, Some(new_id_2));
+        assert_eq!(new_node_3.relatives.next_sibling, Some(new_id_5));
+        assert_eq!(new_node_3.relatives.first_child, None);
+        assert_eq!(new_node_3.relatives.last_child, None);
+
+        let new_node_4 = tree.get_node(new_id_4);
+        assert!(new_node_4.is_some());
+
+        let new_node_4 = new_node_4.unwrap();
+        assert_eq!(new_node_4.data, 1);
+        assert_eq!(new_node_4.relatives.parent, Some(root_id));
+        assert_eq!(new_node_4.relatives.prev_sibling, None);
+        assert_eq!(new_node_4.relatives.next_sibling, Some(new_id_2));
+        assert_eq!(new_node_4.relatives.first_child, None);
+        assert_eq!(new_node_4.relatives.last_child, None);
+
+        let new_node_5 = tree.get_node(new_id_5);
+        assert!(new_node_5.is_some());
+
+        let new_node_5 = new_node_5.unwrap();
+        assert_eq!(new_node_5.data, 4);
+        assert_eq!(new_node_5.relatives.parent, Some(root_id));
+        assert_eq!(new_node_5.relatives.prev_sibling, Some(new_id_3));
+        assert_eq!(new_node_5.relatives.next_sibling, Some(new_id));
+        assert_eq!(new_node_5.relatives.first_child, None);
+        assert_eq!(new_node_5.relatives.last_child, None);
+
+        let root = tree.get(root_id).unwrap();
+        assert_eq!(root.data(), &0);
+
+        // left to right
+        let new_node = root.first_child().unwrap();
+        let new_node_2 = new_node.next_sibling().unwrap();
+        let new_node_3 = new_node_2.next_sibling().unwrap();
+        let new_node_4 = new_node_3.next_sibling().unwrap();
+        let new_node_5 = new_node_4.next_sibling().unwrap();
+        assert_eq!(new_node.data(), &1);
+        assert_eq!(new_node_2.data(), &3);
+        assert_eq!(new_node_3.data(), &4);
+        assert_eq!(new_node_4.data(), &4);
+        assert_eq!(new_node_5.data(), &7);
+
+        // right to left
+        let new_node_5 = root.last_child().unwrap();
+        let new_node_4 = new_node_5.prev_sibling().unwrap();
+        let new_node_3 = new_node_4.prev_sibling().unwrap();
+        let new_node_2 = new_node_3.prev_sibling().unwrap();
+        let new_node = new_node_2.prev_sibling().unwrap();
+        assert_eq!(new_node_5.data(), &7);
+        assert_eq!(new_node_4.data(), &4);
+        assert_eq!(new_node_3.data(), &4);
+        assert_eq!(new_node_2.data(), &3);
+        assert_eq!(new_node.data(), &1);
+    }
+
+    #[test]
+    fn sort_none() {
+        let mut tree = Tree::new();
+        let root = tree.set_root(0);
+
+        tree.root_mut().unwrap().sort_children();
+
+        let root_node = tree.get_node(root).unwrap();
+        assert_eq!(root_node.data, 0);
+        assert_eq!(root_node.relatives.first_child, None);
+        assert_eq!(root_node.relatives.last_child, None);
+        assert_eq!(root_node.relatives.next_sibling, None);
+        assert_eq!(root_node.relatives.prev_sibling, None);
+        assert_eq!(root_node.relatives.parent, None);
+    }
+
+    #[test]
+    fn sort_one() {
+        let mut tree = Tree::new();
+        let root = tree.set_root(0);
+        let child = {
+            let mut root_mut = tree.root_mut().unwrap();
+            let child = root_mut.append(1).node_id();
+            root_mut.sort_children();
+            child
+        };
+
+        let root_node = tree.get_node(root).unwrap();
+        assert_eq!(root_node.data, 0);
+        assert_eq!(root_node.relatives.first_child, Some(child));
+        assert_eq!(root_node.relatives.last_child, Some(child));
+        assert_eq!(root_node.relatives.next_sibling, None);
+        assert_eq!(root_node.relatives.prev_sibling, None);
+        assert_eq!(root_node.relatives.parent, None);
+
+        let child_node = tree.get_node(child).unwrap();
+        assert_eq!(child_node.data, 1);
+        assert_eq!(child_node.relatives.first_child, None);
+        assert_eq!(child_node.relatives.last_child, None);
+        assert_eq!(child_node.relatives.next_sibling, None);
+        assert_eq!(child_node.relatives.prev_sibling, None);
+        assert_eq!(child_node.relatives.parent, Some(root));
     }
 }
