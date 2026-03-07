@@ -38,6 +38,27 @@ impl<'a, T> NodeMut<'a, T> {
     }
 
     ///
+    /// Returns a reference to the data contained by the given `Node`.
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    ///
+    /// let root = tree.root_mut().expect("root doesn't exist?");
+    ///
+    /// assert_eq!(root.data(), &1);
+    /// ```
+    ///
+    pub fn data(&self) -> &T {
+        if let Some(node) = self.tree.get_node(self.node_id) {
+            &node.data
+        } else {
+            unreachable!()
+        }
+    }
+
+    ///
     /// Returns a mutable reference to the data contained by the given `Node`.
     ///
     /// ```
@@ -46,7 +67,7 @@ impl<'a, T> NodeMut<'a, T> {
     /// let mut tree = TreeBuilder::new().with_root(1).build();
     /// let mut root = tree.root_mut().expect("root doesn't exist?");
     ///
-    /// let data = root.data();
+    /// let data = root.data_mut();
     ///
     /// assert_eq!(data, &mut 1);
     ///
@@ -55,7 +76,7 @@ impl<'a, T> NodeMut<'a, T> {
     /// assert_eq!(data, &mut 3);
     /// ```
     ///
-    pub fn data(&mut self) -> &mut T {
+    pub fn data_mut(&mut self) -> &mut T {
         if let Some(node) = self.tree.get_node_mut(self.node_id) {
             &mut node.data
         } else {
@@ -197,15 +218,15 @@ impl<'a, T> NodeMut<'a, T> {
     /// root.append(2);
     ///
     /// assert!(root.first_child().is_some());
-    /// assert_eq!(root.first_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.first_child().unwrap().data(), &2);
     ///
     /// assert!(root.last_child().is_some());
-    /// assert_eq!(root.last_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.last_child().unwrap().data(), &2);
     ///
     /// let mut child = root.first_child().unwrap();
     ///
     /// assert!(child.parent().is_some());
-    /// assert_eq!(child.parent().unwrap().data(), &mut 1);
+    /// assert_eq!(child.parent().unwrap().data(), &1);
     ///
     ///
     /// let mut tree = TreeBuilder::new().with_root(1).build();
@@ -246,15 +267,15 @@ impl<'a, T> NodeMut<'a, T> {
     ///
     /// assert!(two.is_some());
     /// assert!(root.first_child().is_some());
-    /// assert_eq!(root.first_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.first_child().unwrap().data(), &2);
     ///
     /// assert!(root.last_child().is_some());
-    /// assert_eq!(root.last_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.last_child().unwrap().data(), &2);
     ///
     /// let mut child = root.first_child().unwrap();
     ///
     /// assert!(child.parent().is_some());
-    /// assert_eq!(child.parent().unwrap().data(), &mut 1);
+    /// assert_eq!(child.parent().unwrap().data(), &1);
     ///
     ///
     /// let mut tree = TreeBuilder::new().with_root(1).build();
@@ -312,15 +333,15 @@ impl<'a, T> NodeMut<'a, T> {
     /// root.prepend(2);
     ///
     /// assert!(root.first_child().is_some());
-    /// assert_eq!(root.first_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.first_child().unwrap().data(), &2);
     ///
     /// assert!(root.last_child().is_some());
-    /// assert_eq!(root.last_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.last_child().unwrap().data(), &2);
     ///
     /// let mut child = root.first_child().unwrap();
     ///
     /// assert!(child.parent().is_some());
-    /// assert_eq!(child.parent().unwrap().data(), &mut 1);
+    /// assert_eq!(child.parent().unwrap().data(), &1);
     /// ```
     ///
     pub fn prepend(&mut self, data: T) -> NodeMut<T> {
@@ -345,15 +366,15 @@ impl<'a, T> NodeMut<'a, T> {
     ///
     /// assert!(two.is_some());
     /// assert!(root.first_child().is_some());
-    /// assert_eq!(root.first_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.first_child().unwrap().data(), &2);
     ///
     /// assert!(root.last_child().is_some());
-    /// assert_eq!(root.last_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.last_child().unwrap().data(), &2);
     ///
     /// let mut child = root.first_child().unwrap();
     ///
     /// assert!(child.parent().is_some());
-    /// assert_eq!(child.parent().unwrap().data(), &mut 1);
+    /// assert_eq!(child.parent().unwrap().data(), &1);
     /// ```
     ///
     pub fn prepend_orphaned(&mut self, orphan_id: NodeId) -> Option<NodeMut<T>> {
@@ -405,10 +426,10 @@ impl<'a, T> NodeMut<'a, T> {
     /// assert_eq!(two.unwrap(), 2);
     ///
     /// assert!(root.first_child().is_some());
-    /// assert_eq!(root.first_child().unwrap().data(), &mut 3);
+    /// assert_eq!(root.first_child().unwrap().data(), &3);
     ///
     /// assert!(root.last_child().is_some());
-    /// assert_eq!(root.last_child().unwrap().data(), &mut 3);
+    /// assert_eq!(root.last_child().unwrap().data(), &3);
     /// ```
     ///
     pub fn remove_first(&mut self, behavior: RemoveBehavior) -> Option<T> {
@@ -442,10 +463,10 @@ impl<'a, T> NodeMut<'a, T> {
     /// assert_eq!(three.unwrap(), 3);
     ///
     /// assert!(root.first_child().is_some());
-    /// assert_eq!(root.first_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.first_child().unwrap().data(), &2);
     ///
     /// assert!(root.last_child().is_some());
-    /// assert_eq!(root.last_child().unwrap().data(), &mut 2);
+    /// assert_eq!(root.last_child().unwrap().data(), &2);
     /// ```
     ///
     pub fn remove_last(&mut self, behavior: RemoveBehavior) -> Option<T> {
@@ -866,10 +887,23 @@ mod node_mut_tests {
         let root_id = tree.root_id().expect("root doesn't exist?");
 
         let mut root_mut = tree.get_mut(root_id).unwrap();
-        assert_eq!(root_mut.data(), &mut 1);
+        assert_eq!(root_mut.data(), &1);
 
-        *root_mut.data() = 2;
-        assert_eq!(root_mut.data(), &mut 2);
+        *root_mut.data_mut() = 2;
+        assert_eq!(root_mut.data(), &2);
+    }
+
+    #[test]
+    fn data_mut() {
+        let mut tree = Tree::new();
+        tree.set_root(1);
+        let root_id = tree.root_id().expect("root doesn't exist?");
+
+        let mut root_mut = tree.get_mut(root_id).unwrap();
+        assert_eq!(root_mut.data_mut(), &mut 1);
+
+        *root_mut.data_mut() = 2;
+        assert_eq!(root_mut.data_mut(), &mut 2);
     }
 
     #[test]
@@ -1523,7 +1557,7 @@ mod node_mut_tests {
         let new_child = root_mut.append_orphaned(orphan_id);
 
         assert!(new_child.is_some());
-        assert_eq!(new_child.unwrap().data(), &mut 10);
+        assert_eq!(new_child.unwrap().data(), &10);
 
         let root_ref = tree.get(root_id).unwrap();
         assert_eq!(root_ref.children().count(), 1);
@@ -1581,7 +1615,7 @@ mod node_mut_tests {
         let new_child = root_mut.prepend_orphaned(orphan_id);
 
         assert!(new_child.is_some());
-        assert_eq!(new_child.unwrap().data(), &mut 10);
+        assert_eq!(new_child.unwrap().data(), &10);
 
         let root_ref = tree.get(root_id).unwrap();
         assert_eq!(root_ref.children().count(), 1);

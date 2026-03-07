@@ -230,10 +230,10 @@ impl<T> Tree<T> {
     /// tree.set_root(1);
     ///
     /// let mut root = tree.root_mut().expect("root doesn't exist?");
-    /// assert_eq!(root.data(), &mut 1);
+    /// assert_eq!(root.data(), &1);
     ///
-    /// *root.data() = 2;
-    /// assert_eq!(root.data(), &mut 2);
+    /// *root.data_mut() = 2;
+    /// assert_eq!(root.data(), &2);
     /// ```
     ///
     pub fn root_mut(&mut self) -> Option<NodeMut<T>> {
@@ -281,8 +281,8 @@ impl<T> Tree<T> {
     ///
     /// let mut root = root.unwrap();
     ///
-    /// *root.data() = 2;
-    /// assert_eq!(root.data(), &mut 2);
+    /// *root.data_mut() = 2;
+    /// assert_eq!(root.data(), &2);
     /// ```
     ///
     pub fn get_mut(&mut self, node_id: NodeId) -> Option<NodeMut<T>> {
@@ -847,10 +847,10 @@ mod tree_tests {
         let mut tree = TreeBuilder::new().with_root(1).build();
         let mut root = tree.root_mut().expect("root doesn't exist?");
 
-        assert_eq!(root.data(), &mut 1);
+        assert_eq!(root.data(), &1);
 
-        *root.data() = 2;
-        assert_eq!(root.data(), &mut 2);
+        *root.data_mut() = 2;
+        assert_eq!(root.data(), &2);
     }
 
     #[test]
@@ -915,10 +915,10 @@ mod tree_tests {
         assert!(root.is_some());
 
         let mut root = root.unwrap();
-        assert_eq!(root.data(), &mut 1);
+        assert_eq!(root.data(), &1);
 
-        *root.data() = 2;
-        assert_eq!(root.data(), &mut 2);
+        *root.data_mut() = 2;
+        assert_eq!(root.data(), &2);
     }
 
     #[test]
