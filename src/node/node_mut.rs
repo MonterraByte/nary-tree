@@ -7,6 +7,9 @@ use crate::behaviors::RemoveBehavior;
 use crate::node::{Node, NodeId, NodeRef, Relatives};
 use crate::tree::Tree;
 
+#[cfg(feature = "iter_mut")]
+use crate::iter_mut::{NextSiblingsMut, PostOrderMut, PreOrderMut};
+
 ///
 /// A mutable reference to a given `Node`'s data and its relatives.
 ///
@@ -167,6 +170,34 @@ impl<'a, T> NodeMut<'a, T> {
     }
 
     ///
+    /// Returns a [lending iterator](lender::Lender) over the given `Node`'s children.
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    /// use nary_tree::iter_mut::Lender;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    ///
+    /// let mut root = tree.root_mut().expect("root doesn't exist?");
+    /// root.append(2);
+    /// root.append(3);
+    /// root.append(4);
+    ///
+    /// let values = [3, 4, 5];
+    /// let mut lender = root.children().enumerate();
+    /// while let Some((i, mut child)) = lender.next() {
+    ///     *child.data() += 1;
+    ///     assert_eq!(child.data(), &values[i]);
+    /// }
+    /// ```
+    ///
+    #[cfg(feature = "iter_mut")]
+    pub fn children(self) -> NextSiblingsMut<'a, T> {
+        let first_child_id = self.tree.get_node_relatives(self.node_id).first_child;
+        NextSiblingsMut::new(first_child_id, self.tree)
+    }
+
+    ///
     /// Returns `true` if this `Node` is an orphan (i.e., has no parent and is not the root).
     /// Returns `false` if this `Node` has a parent or is the root.
     /// ```
@@ -185,6 +216,56 @@ impl<'a, T> NodeMut<'a, T> {
     pub fn is_orphan(&self) -> bool {
         self.get_self_as_node().relatives.parent.is_none()
             && self.tree.root_id() != Some(self.node_id)
+    }
+
+    /// Depth-first pre-order traversal.
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder; // TODO
+    /// use nary_tree::iter_mut::Lender;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(0i64).build();
+    /// let root_id = tree.root().unwrap().node_id();
+    /// let one_id = tree.get_mut(root_id).unwrap().append(1).node_id();
+    /// tree.get_mut(one_id).unwrap().append(2);
+    /// tree.get_mut(one_id).unwrap().append(3);
+    /// tree.get_mut(root_id).unwrap().append(4);
+    ///
+    /// let mut pre_order = tree.root_mut().unwrap().traverse_pre_order();
+    /// let mut pre_order_iteration = Vec::new();
+    /// while let Some(node) = pre_order.next() {
+    ///     pre_order_iteration.push(*node.as_ref().data());
+    /// }
+    /// assert_eq!(pre_order_iteration, vec![0, 1, 2, 3, 4]);
+    /// ```
+    #[cfg(feature = "iter_mut")]
+    pub fn traverse_pre_order(self) -> PreOrderMut<'a, T> {
+        PreOrderMut::new(self.node_id, self.tree)
+    }
+
+    /// Depth-first post-order traversal.
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder; // TODO
+    /// use nary_tree::iter_mut::Lender;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(0i64).build();
+    /// let root_id = tree.root().unwrap().node_id();
+    /// let one_id = tree.get_mut(root_id).unwrap().append(1).node_id();
+    /// tree.get_mut(one_id).unwrap().append(2);
+    /// tree.get_mut(one_id).unwrap().append(3);
+    /// tree.get_mut(root_id).unwrap().append(4);
+    ///
+    /// let mut post_order = tree.root_mut().unwrap().traverse_post_order();
+    /// let mut post_order_iteration = Vec::new();
+    /// while let Some(node) = post_order.next() {
+    ///     post_order_iteration.push(*node.as_ref().data());
+    /// }
+    /// assert_eq!(post_order_iteration, vec![2, 3, 1, 4, 0]);
+    /// ```
+    #[cfg(feature = "iter_mut")]
+    pub fn traverse_post_order(self) -> PostOrderMut<'a, T> {
+        PostOrderMut::new(self.node_id, self.tree)
     }
 
     ///

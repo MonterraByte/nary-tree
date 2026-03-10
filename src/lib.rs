@@ -74,6 +74,8 @@ extern crate slab as slab_tokio;
 pub mod behaviors;
 mod core_tree;
 pub mod iter;
+#[cfg(feature = "iter_mut")]
+pub mod iter_mut;
 pub mod node;
 mod slab;
 pub mod tree;
