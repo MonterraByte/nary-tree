@@ -1,12 +1,12 @@
 mod node_mut;
 mod node_ref;
 
-pub use self::node_mut::NodeMut;
+pub use self::node_mut::{MoveError, NodeMut};
 pub use self::node_ref::NodeRef;
 
 use crate::NodeId;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub(crate) struct Relatives {
     pub(crate) parent: Option<NodeId>,
     pub(crate) prev_sibling: Option<NodeId>,

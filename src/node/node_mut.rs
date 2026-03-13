@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
+use std::fmt;
 use std::num::Saturating;
 
+use crate::Ancestors;
 use crate::behaviors::RemoveBehavior;
 use crate::node::{Node, NodeId, NodeRef, Relatives};
 use crate::tree::Tree;
@@ -837,6 +839,86 @@ impl<'a, T> NodeMut<'a, T> {
         }
     }
 
+    /// Removes this node from its parent and appends it to the specified node.
+    ///
+    /// # Errors
+    ///
+    /// This method fails if it would result in a loop.
+    /// This happens when trying to append a node to one of its descendants.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    /// let mut root = tree.root_mut().expect("tree has root node");
+    /// let mut two = root.append(2);
+    /// let three = two.append(3).node_id();
+    /// let two = two.node_id();
+    /// let mut four = root.append(4);
+    /// let five = four.append(5).node_id();
+    /// let four = four.node_id();
+    ///
+    /// assert_eq!(tree.get(three).unwrap().parent().unwrap().node_id(), two);
+    /// tree.get_mut(three).unwrap().append_to(four);
+    /// assert_eq!(tree.get(three).unwrap().parent().unwrap().node_id(), four);
+    /// assert_eq!(tree.get(four).unwrap().last_child().unwrap().node_id(), three);
+    /// ```
+    pub fn append_to(&mut self, new_parent: NodeId) -> Result<(), MoveError> {
+        self.move_to(new_parent, MoveTarget::LastChild)
+    }
+
+    /// Removes this node from its parent and prepends it to the specified node.
+    ///
+    /// # Errors
+    ///
+    /// This method fails if it would result in a loop.
+    /// This happens when trying to prepend a node to one of its descendants.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    /// let mut root = tree.root_mut().expect("tree has root node");
+    /// let mut two = root.append(2);
+    /// let three = two.append(3).node_id();
+    /// let two = two.node_id();
+    /// let mut four = root.append(4);
+    /// let five = four.append(5).node_id();
+    /// let four = four.node_id();
+    ///
+    /// assert_eq!(tree.get(three).unwrap().parent().unwrap().node_id(), two);
+    /// tree.get_mut(three).unwrap().prepend_to(four);
+    /// assert_eq!(tree.get(three).unwrap().parent().unwrap().node_id(), four);
+    /// assert_eq!(tree.get(four).unwrap().first_child().unwrap().node_id(), three);
+    /// ```
+    pub fn prepend_to(&mut self, new_parent: NodeId) -> Result<(), MoveError> {
+        self.move_to(new_parent, MoveTarget::FirstChild)
+    }
+
+    fn move_to(&mut self, new_parent: NodeId, target: MoveTarget) -> Result<(), MoveError> {
+        if self.node_id == new_parent {
+            return Ok(());
+        }
+
+        if Ancestors::new(Some(new_parent), self.tree).any(|n| n.node_id() == self.node_id) {
+            return Err(MoveError::WouldCreateCycle);
+        }
+
+        self.tree.remove_from_parent_and_siblings(self.node_id);
+
+        let mut new_parent = self.tree.get_mut(new_parent).expect("parent exists");
+        match target {
+            MoveTarget::FirstChild => new_parent.prepend_node_id(self.node_id),
+            MoveTarget::LastChild => new_parent.append_node_id(self.node_id),
+        };
+
+        Ok(())
+    }
+
     /// Sorts the direct children of this node.
     ///
     /// # Current implementation
@@ -1153,12 +1235,33 @@ impl SiblingList {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum MoveTarget {
+    FirstChild,
+    LastChild,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MoveError {
+    WouldCreateCycle,
+}
+
+impl fmt::Display for MoveError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MoveError::WouldCreateCycle => f.write_str("cannot move node inside its descendent, as that would create a loop, which is not allowed in a tree")
+        }
+    }
+}
+
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod node_mut_tests {
+    use super::{MoveError, MoveTarget, NodeMut};
+    use crate::NodeId;
     use crate::behaviors::RemoveBehavior::{DropChildren, OrphanChildren};
+    use crate::node::Relatives;
     use crate::tree::Tree;
-    use crate::{NodeId, NodeMut};
 
     #[test]
     fn node_id() {
@@ -1974,6 +2077,253 @@ mod node_mut_tests {
 
         assert!(child_2.prev_sibling().is_none());
         assert!(child_2.next_sibling().is_none());
+    }
+
+    #[test]
+    fn append_to() {
+        move_to(MoveTarget::LastChild);
+    }
+
+    #[test]
+    fn prepend_to() {
+        move_to(MoveTarget::FirstChild);
+    }
+
+    fn move_to(move_target: MoveTarget) {
+        let mut tree = Tree::new();
+        let root = tree.set_root(0);
+        let mut root_mut = tree.root_mut().unwrap();
+
+        let mut node_1 = root_mut.append(1);
+        let node_2 = node_1.append(2).node_id();
+
+        let mut node_3 = node_1.append(3);
+        let node_4 = node_3.append(4).node_id();
+        let node_3 = node_3.node_id();
+
+        let node_5 = node_1.append(5).node_id();
+        let node_1 = node_1.node_id();
+
+        let mut node_6 = root_mut.append(6);
+        let node_7 = node_6.append(7).node_id();
+        let node_8 = node_6.append(8).node_id();
+        let node_6 = node_6.node_id();
+
+        let traverse_pre_order = |tree: &Tree<i32>| {
+            tree.root()
+                .unwrap()
+                .traverse_pre_order()
+                .map(|node| *node.data())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(traverse_pre_order(&tree), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+
+        {
+            let mut node_3 = tree.get_mut(node_3).unwrap();
+            match move_target {
+                MoveTarget::FirstChild => node_3.prepend_to(node_6).unwrap(),
+                MoveTarget::LastChild => node_3.append_to(node_6).unwrap(),
+            };
+        }
+
+        assert_eq!(
+            tree.get_node_relatives(node_1),
+            Relatives {
+                parent: Some(root),
+                prev_sibling: None,
+                next_sibling: Some(node_6),
+                first_child: Some(node_2),
+                last_child: Some(node_5),
+            }
+        );
+
+        assert_eq!(
+            tree.get_node_relatives(node_2),
+            Relatives {
+                parent: Some(node_1),
+                next_sibling: Some(node_5),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            tree.get_node_relatives(node_3),
+            Relatives {
+                parent: Some(node_6),
+                prev_sibling: match move_target {
+                    MoveTarget::FirstChild => None,
+                    MoveTarget::LastChild => Some(node_8),
+                },
+                next_sibling: match move_target {
+                    MoveTarget::FirstChild => Some(node_7),
+                    MoveTarget::LastChild => None,
+                },
+                first_child: Some(node_4),
+                last_child: Some(node_4),
+            }
+        );
+
+        assert_eq!(
+            tree.get_node_relatives(node_4),
+            Relatives {
+                parent: Some(node_3),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            tree.get_node_relatives(node_5),
+            Relatives {
+                parent: Some(node_1),
+                prev_sibling: Some(node_2),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            tree.get_node_relatives(node_6),
+            Relatives {
+                parent: Some(root),
+                prev_sibling: Some(node_1),
+                next_sibling: None,
+                first_child: match move_target {
+                    MoveTarget::FirstChild => Some(node_3),
+                    MoveTarget::LastChild => Some(node_7),
+                },
+                last_child: match move_target {
+                    MoveTarget::FirstChild => Some(node_8),
+                    MoveTarget::LastChild => Some(node_3),
+                },
+            }
+        );
+
+        assert_eq!(
+            tree.get_node_relatives(node_7),
+            Relatives {
+                parent: Some(node_6),
+                prev_sibling: match move_target {
+                    MoveTarget::FirstChild => Some(node_3),
+                    MoveTarget::LastChild => None,
+                },
+                next_sibling: Some(node_8),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            tree.get_node_relatives(node_8),
+            Relatives {
+                parent: Some(node_6),
+                prev_sibling: Some(node_7),
+                next_sibling: match move_target {
+                    MoveTarget::FirstChild => None,
+                    MoveTarget::LastChild => Some(node_3),
+                },
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            traverse_pre_order(&tree),
+            match move_target {
+                MoveTarget::FirstChild => [0, 1, 2, 5, 6, 3, 4, 7, 8],
+                MoveTarget::LastChild => [0, 1, 2, 5, 6, 7, 8, 3, 4],
+            }
+        );
+    }
+
+    #[test]
+    fn append_to_same_parent() {
+        let mut tree = Tree::new();
+        let root = tree.set_root(0);
+        let mut root_mut = tree.root_mut().unwrap();
+
+        let node_1_id = root_mut.append(1).node_id();
+        let node_2_id = root_mut.append(2).node_id();
+        let node_3_id = root_mut.append(3).node_id();
+
+        tree.get_mut(node_2_id).unwrap().append_to(root).unwrap();
+
+        let root = tree.get(root).unwrap();
+        assert_eq!(root.first_child().unwrap().node_id(), node_1_id);
+        assert_eq!(root.last_child().unwrap().node_id(), node_2_id);
+
+        let node_1 = tree.get(node_1_id).unwrap();
+        assert!(node_1.prev_sibling().is_none());
+        assert_eq!(node_1.next_sibling().unwrap().node_id(), node_3_id);
+
+        let node_2 = tree.get(node_2_id).unwrap();
+        assert_eq!(node_2.prev_sibling().unwrap().node_id(), node_3_id);
+        assert!(node_2.next_sibling().is_none());
+
+        let node_3 = tree.get(node_3_id).unwrap();
+        assert_eq!(node_3.prev_sibling().unwrap().node_id(), node_1_id);
+        assert_eq!(node_3.next_sibling().unwrap().node_id(), node_2_id);
+    }
+
+    #[test]
+    fn prepend_to_same_parent() {
+        let mut tree = Tree::new();
+        let root = tree.set_root(0);
+        let mut root_mut = tree.root_mut().unwrap();
+
+        let node_1_id = root_mut.append(1).node_id();
+        let node_2_id = root_mut.append(2).node_id();
+        let node_3_id = root_mut.append(3).node_id();
+
+        tree.get_mut(node_2_id).unwrap().prepend_to(root).unwrap();
+
+        let root = tree.get(root).unwrap();
+        assert_eq!(root.first_child().unwrap().node_id(), node_2_id);
+        assert_eq!(root.last_child().unwrap().node_id(), node_3_id);
+
+        let node_1 = tree.get(node_1_id).unwrap();
+        assert_eq!(node_1.prev_sibling().unwrap().node_id(), node_2_id);
+        assert_eq!(node_1.next_sibling().unwrap().node_id(), node_3_id);
+
+        let node_2 = tree.get(node_2_id).unwrap();
+        assert!(node_2.prev_sibling().is_none());
+        assert_eq!(node_2.next_sibling().unwrap().node_id(), node_1_id);
+
+        let node_3 = tree.get(node_3_id).unwrap();
+        assert_eq!(node_3.prev_sibling().unwrap().node_id(), node_1_id);
+        assert!(node_3.next_sibling().is_none());
+    }
+
+    #[test]
+    fn append_to_descendant() {
+        move_to_descendant(MoveTarget::LastChild);
+    }
+
+    #[test]
+    fn prepend_to_descendant() {
+        move_to_descendant(MoveTarget::FirstChild);
+    }
+
+    fn move_to_descendant(move_target: MoveTarget) {
+        let mut tree = Tree::new();
+        tree.set_root(0);
+        let mut root_mut = tree.root_mut().unwrap();
+
+        let mut node_1 = root_mut.append(1);
+        let node_3 = node_1.append(2).append(3).node_id();
+
+        assert_eq!(
+            match move_target {
+                MoveTarget::FirstChild => node_1.prepend_to(node_3),
+                MoveTarget::LastChild => node_1.append_to(node_3),
+            },
+            Err(MoveError::WouldCreateCycle)
+        );
+
+        assert_eq!(
+            tree.get(node_3)
+                .unwrap()
+                .ancestors()
+                .map(|node| *node.data())
+                .collect::<Vec<_>>(),
+            [2, 1, 0]
+        );
     }
 
     #[test]

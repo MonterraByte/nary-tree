@@ -346,6 +346,20 @@ impl<T> Tree<T> {
         self.core_tree.remove(node_id)
     }
 
+    pub(crate) fn remove_from_parent_and_siblings(&mut self, node_id: NodeId) {
+        let Relatives {
+            parent,
+            prev_sibling,
+            next_sibling,
+            ..
+        } = self.get_node_relatives(node_id);
+
+        self.remove_from_siblings(prev_sibling, next_sibling);
+        if let Some(parent) = parent {
+            self.remove_from_parent(node_id, parent, prev_sibling, next_sibling);
+        }
+    }
+
     fn remove_from_siblings(&mut self, prev_sibling: Option<NodeId>, next_sibling: Option<NodeId>) {
         if let Some(prev_sibling) = prev_sibling {
             self.set_next_sibling(prev_sibling, next_sibling);
