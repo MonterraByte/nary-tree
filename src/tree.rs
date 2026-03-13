@@ -323,41 +323,54 @@ impl<T> Tree<T> {
     /// ```
     ///
     pub fn remove(&mut self, node_id: NodeId, behavior: RemoveBehavior) -> Option<T> {
-        if let Some(node) = self.get_node(node_id) {
-            let Relatives {
-                parent,
-                prev_sibling,
-                next_sibling,
-                ..
-            } = node.relatives;
+        let Relatives {
+            parent,
+            prev_sibling,
+            next_sibling,
+            ..
+        } = self.get_node(node_id)?.relatives;
 
-            let (is_first_child, is_last_child) = self.is_node_first_last_child(node_id);
+        self.remove_from_siblings(prev_sibling, next_sibling);
+        if let Some(parent) = parent {
+            self.remove_from_parent(node_id, parent, prev_sibling, next_sibling);
+        }
 
-            if is_first_child {
-                // parent first child = my next sibling
-                self.set_first_child(parent.expect("parent must exist"), next_sibling);
-            }
-            if is_last_child {
-                // parent last child = my prev sibling
-                self.set_last_child(parent.expect("parent must exist"), prev_sibling);
-            }
-            if let Some(prev) = prev_sibling {
-                self.set_next_sibling(prev, next_sibling);
-            }
-            if let Some(next) = next_sibling {
-                self.set_prev_sibling(next, prev_sibling);
-            }
+        match behavior {
+            RemoveBehavior::DropChildren => self.drop_children(node_id),
+            RemoveBehavior::OrphanChildren => self.orphan_children(node_id),
+        };
 
-            match behavior {
-                RemoveBehavior::DropChildren => self.drop_children(node_id),
-                RemoveBehavior::OrphanChildren => self.orphan_children(node_id),
-            };
-            if self.root_id == Some(node_id) {
-                self.root_id = None;
-            }
-            self.core_tree.remove(node_id)
-        } else {
-            None
+        if self.root_id == Some(node_id) {
+            self.root_id = None;
+        }
+        self.core_tree.remove(node_id)
+    }
+
+    fn remove_from_siblings(&mut self, prev_sibling: Option<NodeId>, next_sibling: Option<NodeId>) {
+        if let Some(prev_sibling) = prev_sibling {
+            self.set_next_sibling(prev_sibling, next_sibling);
+        }
+
+        if let Some(next_sibling) = next_sibling {
+            self.set_prev_sibling(next_sibling, prev_sibling);
+        }
+    }
+
+    fn remove_from_parent(
+        &mut self,
+        node_id: NodeId,
+        parent: NodeId,
+        prev_sibling: Option<NodeId>,
+        next_sibling: Option<NodeId>,
+    ) {
+        let Some(parent) = self.get_node_mut(parent) else {
+            unreachable!();
+        };
+        if parent.relatives.first_child == Some(node_id) {
+            parent.relatives.first_child = next_sibling;
+        }
+        if parent.relatives.last_child == Some(node_id) {
+            parent.relatives.last_child = prev_sibling;
         }
     }
 
@@ -601,28 +614,6 @@ impl<T> Tree<T> {
 
     fn new_node_mut(&mut self, node_id: NodeId) -> NodeMut<'_, T> {
         NodeMut::new(node_id, self)
-    }
-
-    fn is_node_first_last_child(&self, node_id: NodeId) -> (bool, bool) {
-        if let Some(node) = self.get_node(node_id) {
-            node.relatives
-                .parent
-                .and_then(|parent_id| self.get_node(parent_id))
-                .map(|parent| {
-                    let Relatives {
-                        first_child: first,
-                        last_child: last,
-                        ..
-                    } = parent.relatives;
-                    (
-                        first.map(|child_id| child_id == node_id).unwrap_or(false),
-                        last.map(|child_id| child_id == node_id).unwrap_or(false),
-                    )
-                })
-                .unwrap_or((false, false))
-        } else {
-            (false, false)
-        }
     }
 }
 
