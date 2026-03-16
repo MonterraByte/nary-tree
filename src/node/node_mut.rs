@@ -288,6 +288,7 @@ impl<'a, T> NodeMut<'a, T> {
         let prev_sibling = relatives.last_child;
         self.tree.set_parent(node_id, Some(self.node_id));
         self.tree.set_prev_sibling(node_id, prev_sibling);
+        self.tree.set_next_sibling(node_id, None);
 
         let first_child = relatives.first_child.or(Some(node_id));
         self.tree.set_first_child(self.node_id, first_child);
@@ -370,6 +371,7 @@ impl<'a, T> NodeMut<'a, T> {
 
         let next_sibling = relatives.first_child;
         self.tree.set_parent(node_id, Some(self.node_id));
+        self.tree.set_prev_sibling(node_id, None);
         self.tree.set_next_sibling(node_id, next_sibling);
 
         let last_child = relatives.last_child.or(Some(node_id));
@@ -1156,6 +1158,7 @@ impl SiblingList {
 mod node_mut_tests {
     use crate::behaviors::RemoveBehavior::{DropChildren, OrphanChildren};
     use crate::tree::Tree;
+    use crate::{NodeId, NodeMut};
 
     #[test]
     fn node_id() {
@@ -1934,6 +1937,42 @@ mod node_mut_tests {
         let result = root_mut.prepend_orphaned(child_id);
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn append_orphaned_node_with_siblings() {
+        insert_orphaned_node_with_siblings(&|node, id| node.append_orphaned(id));
+    }
+
+    #[test]
+    fn prepend_orphaned_node_with_siblings() {
+        insert_orphaned_node_with_siblings(&|node, id| node.prepend_orphaned(id));
+    }
+
+    fn insert_orphaned_node_with_siblings(
+        insert: &dyn for<'a> Fn(&'a mut NodeMut<'a, i32>, NodeId) -> Option<NodeMut<'a, i32>>,
+    ) {
+        let mut tree = Tree::new();
+        tree.set_root(1i32);
+        let mut root_mut = tree.root_mut().unwrap();
+
+        let mut node = root_mut.append(2);
+        let child_1_id = node.append(3).node_id();
+        let child_2_id = node.append(4).node_id();
+        let child_3_id = node.append(5).node_id();
+        let node = node.node_id();
+
+        let child_2 = tree.get(child_2_id).unwrap();
+        assert_eq!(child_2.prev_sibling().unwrap().node_id(), child_1_id);
+        assert_eq!(child_2.next_sibling().unwrap().node_id(), child_3_id);
+
+        assert!(tree.remove(node, OrphanChildren).is_some());
+
+        let mut root_mut = tree.root_mut().unwrap();
+        let mut child_2 = insert(&mut root_mut, child_2_id).unwrap();
+
+        assert!(child_2.prev_sibling().is_none());
+        assert!(child_2.next_sibling().is_none());
     }
 
     #[test]
