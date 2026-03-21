@@ -48,10 +48,10 @@ impl<T> Slab<T> {
     }
 
     pub(crate) fn try_remove(&mut self, index: Index) -> Option<T> {
-        if let Some(to_remove) = self.slab.get(index.index) {
-            if to_remove.generation != index.generation {
-                return None;
-            }
+        if let Some(to_remove) = self.slab.get(index.index)
+            && to_remove.generation != index.generation
+        {
+            return None;
         }
         self.slab.try_remove(index.index).map(|entry| {
             self.next_generation();

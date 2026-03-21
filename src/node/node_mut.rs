@@ -1949,6 +1949,7 @@ mod node_mut_tests {
         insert_orphaned_node_with_siblings(&|node, id| node.prepend_orphaned(id));
     }
 
+    #[allow(clippy::type_complexity)]
     fn insert_orphaned_node_with_siblings(
         insert: &dyn for<'a> Fn(&'a mut NodeMut<'a, i32>, NodeId) -> Option<NodeMut<'a, i32>>,
     ) {
