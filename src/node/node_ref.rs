@@ -266,7 +266,7 @@ impl<'a, T> NodeRef<'a, T> {
     /// assert_eq!(pre_order, vec![0, 1, 2, 3, 4]);
     /// ```
     pub fn traverse_pre_order(&self) -> PreOrder<'a, T> {
-        PreOrder::new(self, self.tree)
+        PreOrder::new(self.node_id, self.tree)
     }
 
     /// Depth-first post-order traversal.
@@ -285,7 +285,7 @@ impl<'a, T> NodeRef<'a, T> {
     /// assert_eq!(post_order, vec![2, 3, 1, 4, 0]);
     /// ```
     pub fn traverse_post_order(&self) -> PostOrder<'a, T> {
-        PostOrder::new(self, self.tree)
+        PostOrder::new(self.node_id, self.tree)
     }
 
     /// Depth-first level-order traversal.
