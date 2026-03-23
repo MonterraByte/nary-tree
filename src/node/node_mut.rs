@@ -177,7 +177,7 @@ impl<'a, T> NodeMut<'a, T> {
     /// the iterator will still yield the previous next sibling.
     /// If that node was moved to a different parent node,
     /// the iterator will start yielding its children instead.
-    /// If that node was removed from the tree, the iterator will panic.
+    /// If that node was removed from the tree, the iterator will stop early.
     ///
     /// # Examples
     ///

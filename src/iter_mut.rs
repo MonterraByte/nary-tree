@@ -23,9 +23,12 @@ impl<'this, T> Lender for NextSiblingsMut<'this, T> {
     check_covariance!();
 
     fn next(&mut self) -> Option<NodeMut<'_, T>> {
-        self.node_id.take().map(|node_id| {
-            self.node_id = self.tree.get_node_relatives(node_id).next_sibling;
-            NodeMut::new(node_id, self.tree)
+        self.node_id.take().and_then(|node_id| {
+            self.node_id = self
+                .tree
+                .get_node(node_id)
+                .and_then(|node| node.relatives.next_sibling);
+            self.tree.get_mut(node_id)
         })
     }
 }
