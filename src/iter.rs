@@ -54,20 +54,43 @@ impl<'a, T> Iterator for NextSiblings<'a, T> {
 
 /// Depth-first pre-order iterator
 pub struct PreOrder<'a, T> {
-    start: Option<NodeRef<'a, T>>,
-    children: Vec<NextSiblings<'a, T>>,
+    queue: PreOrderQueue,
     tree: &'a Tree<T>,
 }
 
 impl<'a, T> PreOrder<'a, T> {
-    pub(crate) fn new(node: &NodeRef<'a, T>, tree: &'a Tree<T>) -> PreOrder<'a, T> {
-        let children = vec![];
-        let start = tree.get(node.node_id());
+    pub(crate) fn new(node_id: NodeId, tree: &'a Tree<T>) -> PreOrder<'a, T> {
         PreOrder {
-            start,
-            children,
+            queue: PreOrderQueue::new(node_id),
             tree,
         }
+    }
+}
+
+pub(crate) struct PreOrderQueue(Vec<NodeId>);
+
+impl PreOrderQueue {
+    pub fn new(node_id: NodeId) -> Self {
+        Self(vec![node_id])
+    }
+
+    pub fn next<T>(&mut self, tree: &Tree<T>) -> Option<NodeId> {
+        let node_id = self.0.pop()?;
+        let Relatives {
+            first_child,
+            next_sibling,
+            ..
+        } = tree.get_node_relatives(node_id);
+
+        if let Some(next_sibling) = next_sibling {
+            self.0.push(next_sibling);
+        }
+
+        if let Some(first_child) = first_child {
+            self.0.push(first_child);
+        }
+
+        Some(node_id)
     }
 }
 
@@ -75,41 +98,55 @@ impl<'a, T> Iterator for PreOrder<'a, T> {
     type Item = NodeRef<'a, T>;
 
     fn next(&mut self) -> Option<NodeRef<'a, T>> {
-        if let Some(node) = self.start.take() {
-            let first_child_id = node.first_child().map(|child_ref| child_ref.node_id());
-            self.children
-                .push(NextSiblings::new(first_child_id, self.tree));
-            Some(node)
-        } else {
-            while !self.children.is_empty() {
-                if let Some(node_ref) = self.children.last_mut().and_then(Iterator::next) {
-                    if let Some(first_child) = node_ref.first_child() {
-                        self.children
-                            .push(NextSiblings::new(Some(first_child.node_id()), self.tree));
-                    }
-                    return Some(node_ref);
-                }
-                self.children.pop();
-            }
-            None
-        }
+        let node_id = self.queue.next(self.tree)?;
+        Some(NodeRef::new(node_id, self.tree))
     }
 }
 
 /// Depth-first post-order iterator
 pub struct PostOrder<'a, T> {
-    nodes: Vec<(NodeRef<'a, T>, NextSiblings<'a, T>)>,
+    queue: PostOrderQueue,
     tree: &'a Tree<T>,
 }
 
 impl<'a, T> PostOrder<'a, T> {
-    pub(crate) fn new(node: &NodeRef<'a, T>, tree: &'a Tree<T>) -> PostOrder<'a, T> {
-        let node = tree
-            .get(node.node_id())
-            .expect("getting node of node ref id");
-        let first_child_id = node.first_child().map(|first_child| first_child.node_id());
-        let nodes = vec![(node, NextSiblings::new(first_child_id, tree))];
-        PostOrder { nodes, tree }
+    pub(crate) fn new(node_id: NodeId, tree: &'a Tree<T>) -> PostOrder<'a, T> {
+        Self {
+            queue: PostOrderQueue::new(node_id, tree),
+            tree,
+        }
+    }
+}
+
+pub(crate) struct PostOrderQueue(Vec<NodeId>);
+
+impl PostOrderQueue {
+    pub fn new<T>(node_id: NodeId, tree: &Tree<T>) -> Self {
+        let mut queue = Self(Vec::new());
+        queue.add_node_and_descendants_to_queue(node_id, tree);
+        queue
+    }
+
+    pub fn add_node_and_descendants_to_queue<T>(&mut self, mut node_id: NodeId, tree: &Tree<T>) {
+        loop {
+            self.0.push(node_id);
+            let Some(node) = tree.get_node(node_id) else {
+                unreachable!();
+            };
+
+            match node.relatives.first_child {
+                Some(next) => node_id = next,
+                None => break,
+            }
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<NodeId> {
+        self.0.pop()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -117,27 +154,16 @@ impl<'a, T> Iterator for PostOrder<'a, T> {
     type Item = NodeRef<'a, T>;
 
     fn next(&mut self) -> Option<NodeRef<'a, T>> {
-        if let Some((node, mut children)) = self.nodes.pop() {
-            if let Some(next) = children.next() {
-                self.nodes.push((node, children));
-                let mut node_id = next.node_id();
-                loop {
-                    let node = self.tree.get(node_id).expect("getting node of node ref id");
-                    if let Some(first_child) = node.first_child() {
-                        node_id = first_child.node_id();
-                        let mut children = NextSiblings::new(Some(node_id), self.tree);
-                        assert!(children.next().is_some(), "skipping first child");
-                        self.nodes.push((node, children));
-                    } else {
-                        break Some(node);
-                    }
-                }
-            } else {
-                Some(node)
-            }
-        } else {
-            None
+        let node_id = self.queue.pop()?;
+
+        if !self.queue.is_empty() // don't iterate through the siblings of the first node
+            && let Some(next_sibling) = self.tree.get_node_relatives(node_id).next_sibling
+        {
+            self.queue
+                .add_node_and_descendants_to_queue(next_sibling, self.tree);
         }
+
+        Some(NodeRef::new(node_id, self.tree))
     }
 }
 
