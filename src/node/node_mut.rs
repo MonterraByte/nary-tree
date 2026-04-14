@@ -839,20 +839,8 @@ impl<'a, T> NodeMut<'a, T> {
             let node_id = self.node_id();
             let prev_id = self.tree.get_node_prev_sibling_id(node_id);
             let next_id = self.tree.get_node_next_sibling_id(node_id);
-            let last_id = self
-                .tree
-                .get(parent_id)
-                .unwrap()
-                .last_child()
-                .unwrap()
-                .node_id();
-            let first_id = self
-                .tree
-                .get(parent_id)
-                .unwrap()
-                .first_child()
-                .unwrap()
-                .node_id();
+            let last_id = self.tree.get(parent_id).unwrap().last_child_id().unwrap();
+            let first_id = self.tree.get(parent_id).unwrap().first_child_id().unwrap();
             if node_id != last_id {
                 self.tree.set_last_child(parent_id, Some(node_id));
                 if node_id == first_id {
@@ -922,20 +910,8 @@ impl<'a, T> NodeMut<'a, T> {
             let node_id = self.node_id();
             let prev_id = self.tree.get_node_prev_sibling_id(node_id);
             let next_id = self.tree.get_node_next_sibling_id(node_id);
-            let first_id = self
-                .tree
-                .get(parent_id)
-                .unwrap()
-                .first_child()
-                .unwrap()
-                .node_id();
-            let last_id = self
-                .tree
-                .get(parent_id)
-                .unwrap()
-                .last_child()
-                .unwrap()
-                .node_id();
+            let first_id = self.tree.get(parent_id).unwrap().first_child_id().unwrap();
+            let last_id = self.tree.get(parent_id).unwrap().last_child_id().unwrap();
             if node_id != first_id {
                 self.tree.set_first_child(parent_id, Some(node_id));
                 if node_id == last_id {
