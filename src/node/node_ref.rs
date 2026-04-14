@@ -81,6 +81,22 @@ impl<'a, T> NodeRef<'a, T> {
             .map(|id| NodeRef::new(id, self.tree))
     }
 
+    /// Returns the [`NodeId`] of this `Node`'s parent, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    /// let child = tree.root_mut().expect("has root node").append(2).node_id();
+    ///
+    /// assert_eq!(tree.get(child).unwrap().parent_id(), tree.root_id());
+    /// ```
+    pub fn parent_id(&self) -> Option<NodeId> {
+        self.get_self_as_node().relatives.parent
+    }
+
     ///
     /// Returns a `NodeRef` pointing to this `Node`'s previous sibling.  Returns a `Some`-value
     /// containing the `NodeRef` if this `Node` has a previous sibling; otherwise returns a `None`.
@@ -100,6 +116,24 @@ impl<'a, T> NodeRef<'a, T> {
             .relatives
             .prev_sibling
             .map(|id| NodeRef::new(id, self.tree))
+    }
+
+    /// Returns the [`NodeId`] of this `Node`'s previous sibling, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    /// let mut root = tree.root_mut().expect("has root node");
+    /// let sibling = root.append(2).node_id();
+    /// let node = root.append(3).node_id();
+    ///
+    /// assert_eq!(tree.get(node).unwrap().prev_sibling_id(), Some(sibling));
+    /// ```
+    pub fn prev_sibling_id(&self) -> Option<NodeId> {
+        self.get_self_as_node().relatives.prev_sibling
     }
 
     ///
@@ -123,6 +157,24 @@ impl<'a, T> NodeRef<'a, T> {
             .map(|id| NodeRef::new(id, self.tree))
     }
 
+    /// Returns the [`NodeId`] of this `Node`'s next sibling, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    /// let mut root = tree.root_mut().expect("has root node");
+    /// let node = root.append(2).node_id();
+    /// let sibling = root.append(3).node_id();
+    ///
+    /// assert_eq!(tree.get(node).unwrap().next_sibling_id(), Some(sibling));
+    /// ```
+    pub fn next_sibling_id(&self) -> Option<NodeId> {
+        self.get_self_as_node().relatives.next_sibling
+    }
+
     ///
     /// Returns a `NodeRef` pointing to this `Node`'s first child.  Returns a `Some`-value
     /// containing the `NodeRef` if this `Node` has a first child; otherwise returns a `None`.
@@ -144,6 +196,22 @@ impl<'a, T> NodeRef<'a, T> {
             .map(|id| NodeRef::new(id, self.tree))
     }
 
+    /// Returns the [`NodeId`] of this `Node`'s first child, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    /// let child = tree.root_mut().expect("has root node").append(2).node_id();
+    ///
+    /// assert_eq!(tree.root().unwrap().first_child_id(), Some(child));
+    /// ```
+    pub fn first_child_id(&self) -> Option<NodeId> {
+        self.get_self_as_node().relatives.first_child
+    }
+
     ///
     /// Returns a `NodeRef` pointing to this `Node`'s last child.  Returns a `Some`-value
     /// containing the `NodeRef` if this `Node` has a last child; otherwise returns a `None`.
@@ -163,6 +231,22 @@ impl<'a, T> NodeRef<'a, T> {
             .relatives
             .last_child
             .map(|id| NodeRef::new(id, self.tree))
+    }
+
+    /// Returns the [`NodeId`] of this `Node`'s last child, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nary_tree::tree::TreeBuilder;
+    ///
+    /// let mut tree = TreeBuilder::new().with_root(1).build();
+    /// let child = tree.root_mut().expect("has root node").append(2).node_id();
+    ///
+    /// assert_eq!(tree.root().unwrap().last_child_id(), Some(child));
+    /// ```
+    pub fn last_child_id(&self) -> Option<NodeId> {
+        self.get_self_as_node().relatives.last_child
     }
 
     ///
