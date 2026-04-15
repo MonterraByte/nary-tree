@@ -104,3 +104,9 @@ impl std::fmt::Display for NodeId {
         write!(f, "tree {}, {}", self.tree_id, self.index)
     }
 }
+
+impl NodeId {
+    pub fn same_tree(&self, other: &NodeId) -> bool {
+        self.tree_id == other.tree_id
+    }
+}
