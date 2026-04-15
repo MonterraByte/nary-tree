@@ -98,3 +98,9 @@ pub struct NodeId {
     tree_id: ProcessUniqueId,
     index: slab::Index,
 }
+
+impl std::fmt::Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "tree {}, {}", self.tree_id, self.index)
+    }
+}

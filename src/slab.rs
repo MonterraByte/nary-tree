@@ -104,6 +104,16 @@ impl<T> Slab<T> {
     }
 }
 
+impl std::fmt::Display for Index {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.generation == 0 {
+            write!(f, "index: {}", self.index)
+        } else {
+            write!(f, "index: {}, gen: {}", self.index, self.generation)
+        }
+    }
+}
+
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod tests {
