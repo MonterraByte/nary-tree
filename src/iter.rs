@@ -92,6 +92,10 @@ impl PreOrderQueue {
 
         Some(node_id)
     }
+
+    pub fn pop(&mut self) -> Option<NodeId> {
+        self.0.pop()
+    }
 }
 
 impl<'a, T> Iterator for PreOrder<'a, T> {

@@ -4,6 +4,7 @@ use std::fmt::Write;
 use crate::NodeId;
 use crate::behaviors::*;
 use crate::core_tree::CoreTree;
+use crate::iter::PreOrderQueue;
 use crate::node::*;
 
 ///
@@ -386,6 +387,39 @@ impl<T> Tree<T> {
         if parent.relatives.last_child == Some(node_id) {
             parent.relatives.last_child = prev_sibling;
         }
+    }
+
+    /// Replaces the tree with a sub-tree starting at the specified node.
+    ///
+    /// Nodes other than the specified node and its descendants are discarded.
+    pub fn into_subtree(&mut self, new_root: NodeId) -> Result<(), NotFound> {
+        let node = self.get_node(new_root).ok_or(NotFound)?;
+        let first_child = node.relatives.first_child;
+
+        if let Some(old_root) = self.root_id {
+            let mut queue = PreOrderQueue::new(old_root);
+            while let Some(id) = queue.next(self) {
+                if id == new_root {
+                    if first_child.is_some() {
+                        let removed = queue.pop();
+                        assert_eq!(removed, first_child);
+                    }
+                    continue;
+                }
+
+                self.core_tree.remove(id);
+            }
+        }
+
+        let Some(node) = self.get_node_mut(new_root) else {
+            unreachable!();
+        };
+        node.relatives.parent = None;
+        node.relatives.prev_sibling = None;
+        node.relatives.next_sibling = None;
+
+        self.root_id = Some(new_root);
+        Ok(())
     }
 
     /// Shrink the capacity of the nary_tree as much as possible without invalidating
@@ -802,6 +836,17 @@ impl<T: Display> Display for Tree<T> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct NotFound;
+
+impl Display for NotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the operation failed because the specified node couldn't be found")
+    }
+}
+
+impl std::error::Error for NotFound {}
+
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod tree_tests {
@@ -1071,6 +1116,57 @@ mod tree_tests {
 
         let five = five.unwrap();
         assert_eq!(five.relatives.parent, None);
+    }
+
+    #[test]
+    fn into_subtree() {
+        let mut tree = TreeBuilder::new().with_root(1).build();
+
+        let one_id = tree.root_id().unwrap();
+        let two_id;
+        let three_id;
+        let four_id;
+        let five_id;
+        {
+            let mut root = tree.root_mut().expect("root doesn't exist?");
+            two_id = root.append(2).node_id();
+            three_id = root.append(3).node_id();
+            four_id = root.append(4).node_id();
+        }
+        {
+            five_id = tree
+                .get_mut(three_id)
+                .expect("three doesn't exist?")
+                .append(5)
+                .node_id();
+        }
+
+        //        1
+        //      / | \
+        //     2  3  4
+        //        |
+        //        5
+
+        tree.into_subtree(three_id).expect("node exists");
+
+        assert_eq!(tree.root_id(), Some(three_id));
+        assert!(tree.get(one_id).is_none());
+        assert!(tree.get(two_id).is_none());
+        assert!(tree.get(four_id).is_none());
+
+        let new_root = tree.root().expect("has root");
+        assert!(new_root.parent().is_none());
+        assert!(new_root.prev_sibling().is_none());
+        assert!(new_root.next_sibling().is_none());
+        assert_eq!(new_root.first_child().map(|n| n.node_id()), Some(five_id));
+        assert_eq!(new_root.last_child().map(|n| n.node_id()), Some(five_id));
+
+        let child = tree.get(five_id).expect("node exists");
+        assert_eq!(child.parent().map(|n| n.node_id()), tree.root_id());
+        assert!(child.prev_sibling().is_none());
+        assert!(child.next_sibling().is_none());
+        assert!(child.first_child().is_none());
+        assert!(child.last_child().is_none());
     }
 
     #[test]
