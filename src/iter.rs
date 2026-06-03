@@ -67,34 +67,42 @@ impl<'a, T> PreOrder<'a, T> {
     }
 }
 
-pub(crate) struct PreOrderQueue(Vec<NodeId>);
+pub(crate) struct PreOrderQueue {
+    queue: Vec<NodeId>,
+    first: bool,
+}
 
 impl PreOrderQueue {
     pub fn new(node_id: NodeId) -> Self {
-        Self(vec![node_id])
+        Self {
+            queue: vec![node_id],
+            first: true,
+        }
     }
 
     pub fn next<T>(&mut self, tree: &Tree<T>) -> Option<NodeId> {
-        let node_id = self.0.pop()?;
+        let node_id = self.queue.pop()?;
         let Relatives {
             first_child,
             next_sibling,
             ..
         } = tree.get_node_relatives(node_id);
 
-        if let Some(next_sibling) = next_sibling {
-            self.0.push(next_sibling);
+        if self.first {
+            self.first = false;
+        } else if let Some(next_sibling) = next_sibling {
+            self.queue.push(next_sibling);
         }
 
         if let Some(first_child) = first_child {
-            self.0.push(first_child);
+            self.queue.push(first_child);
         }
 
         Some(node_id)
     }
 
     pub fn pop(&mut self) -> Option<NodeId> {
-        self.0.pop()
+        self.queue.pop()
     }
 }
 

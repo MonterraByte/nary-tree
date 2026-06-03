@@ -493,4 +493,23 @@ mod node_ref_tests {
             assert_eq!(node_ref.data(), &values[i]);
         }
     }
+
+    #[test]
+    fn traverse_subtree_pre_order() {
+        let mut tree = Tree::new();
+        tree.set_root(0i32);
+
+        let root_id = tree.root().unwrap().node_id();
+        let one_id = tree.get_mut(root_id).unwrap().append(1).node_id();
+        tree.get_mut(one_id).unwrap().append(2);
+        tree.get_mut(one_id).unwrap().append(3);
+        tree.get_mut(root_id).unwrap().append(4);
+        let pre_order = tree
+            .get(one_id)
+            .unwrap()
+            .traverse_pre_order()
+            .map(|node_ref| *node_ref.data())
+            .collect::<Vec<i32>>();
+        assert_eq!(pre_order, vec![1, 2, 3]);
+    }
 }
